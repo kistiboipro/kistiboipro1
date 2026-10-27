@@ -1,0 +1,6 @@
+{
+  "name": "KistiBoi - Bismillah Electronics and Furniture",
+  "description": "Comprehensive business and installment management dashboard in Bengali for Bismillah Electronics and Furniture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
