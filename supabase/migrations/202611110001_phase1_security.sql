@@ -113,3 +113,39 @@ create policy "Admin deletes staff accounts" on public.user_accounts for delete 
 
 -- Default privileges: newly-created tables in public must not be open to anon.
 alter default privileges in schema public revoke all on tables from anon;
+
+-- Per-user Gemini quota: 20 requests per rolling hour.
+create table if not exists public.api_usage_limits (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  window_started_at timestamptz not null default now(),
+  request_count integer not null default 0
+);
+alter table public.api_usage_limits enable row level security;
+revoke all on table public.api_usage_limits from anon, authenticated;
+create or replace function public.consume_gemini_quota(p_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  current_count integer;
+begin
+  if auth.uid() is null or auth.uid() <> p_user_id then
+    return false;
+  end if;
+  insert into public.api_usage_limits(user_id, window_started_at, request_count)
+  values (p_user_id, now(), 1)
+  on conflict (user_id) do update
+    set window_started_at = case
+      when public.api_usage_limits.window_started_at < now() - interval '1 hour' then now()
+      else public.api_usage_limits.window_started_at end,
+    request_count = case
+      when public.api_usage_limits.window_started_at < now() - interval '1 hour' then 1
+      else public.api_usage_limits.request_count + 1 end
+  returning request_count into current_count;
+  return current_count <= 20;
+end;
+$$;
+revoke all on function public.consume_gemini_quota(uuid) from public, anon;
+grant execute on function public.consume_gemini_quota(uuid) to authenticated;
