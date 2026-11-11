@@ -6,8 +6,8 @@ alter table public.user_accounts
   add column if not exists role_key text,
   add column if not exists is_active boolean not null default true;
 
-do $
-begin
+DO $phase1$
+BEGIN
   if not exists (
     select 1 from pg_constraint
     where conname = 'user_accounts_role_key_check'
@@ -17,7 +17,8 @@ begin
       add constraint user_accounts_role_key_check
       check (role_key is null or role_key in ('admin', 'manager', 'cashier'));
   end if;
-END;\n$phase1$;
+END;
+$phase1$;
 
 create index if not exists idx_user_accounts_auth_user_id
   on public.user_accounts(auth_user_id);
