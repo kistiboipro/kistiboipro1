@@ -17,7 +17,7 @@ begin
       add constraint user_accounts_role_key_check
       check (role_key is null or role_key in ('admin', 'manager', 'cashier'));
   end if;
-end $;
+END;\n$phase1$;
 
 create index if not exists idx_user_accounts_auth_user_id
   on public.user_accounts(auth_user_id);
@@ -39,6 +39,14 @@ $$;
 revoke all on function public.current_staff_role() from public;
 revoke all on function public.current_staff_role() from anon;
 grant execute on function public.current_staff_role() to authenticated;
+
+-- Ensure RLS is enabled even if the original schema was only partially applied.
+alter table public.customers enable row level security;
+alter table public.installment_schedules enable row level security;
+alter table public.transactions enable row level security;
+alter table public.expenses enable row level security;
+alter table public.stock_products enable row level security;
+alter table public.user_accounts enable row level security;
 
 -- Remove the previous world-readable/world-writable policies.
 drop policy if exists "Public full access on customers" on public.customers;
