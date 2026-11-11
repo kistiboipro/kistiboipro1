@@ -38,6 +38,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You are not authorised to use this service." }, { status: 403 });
     }
 
+    const { data: quotaAllowed, error: quotaError } = await userClient.rpc("consume_gemini_quota", {
+      p_user_id: authData.user.id,
+    });
+    if (quotaError) {
+      console.error("Gemini quota check failed:", quotaError.message);
+      return NextResponse.json({ error: "AI service is temporarily unavailable." }, { status: 503 });
+    }
+    if (!quotaAllowed) {
+      return NextResponse.json({ error: "Hourly AI request limit reached. Try again later." }, { status: 429 });
+    }
+
     const contentLength = Number(req.headers.get("content-length") || 0);
     if (contentLength > MAX_BODY_BYTES) {
       return NextResponse.json({ error: "Request is too large." }, { status: 413 });
