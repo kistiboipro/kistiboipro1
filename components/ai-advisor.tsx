@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Sparkles, Bot, Send, Loader2, TrendingUp, ShieldAlert, Lightbulb } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { translations, Language } from '@/lib/i18n';
+import { supabase } from '@/lib/supabase';
 
 interface AiAdvisorProps {
   businessData: any;
@@ -20,9 +21,16 @@ export function AiAdvisor({ businessData, darkMode, language }: AiAdvisorProps) 
   const fetchAdvice = async (customPrompt?: string) => {
     setLoading(true);
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        throw new Error(language === 'bn' ? 'অনুগ্রহ করে আবার লগইন করুন।' : 'Please sign in again.');
+      }
       const res = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           prompt: customPrompt || (language === 'bn' ? 'আমাদের বর্তমান ব্যবসার আয়, কালেকশন ও বাকি এর ওপর ভিত্তি করে ৫টি গুরুত্বপূর্ণ ব্যবসায়িক পরামর্শ দিন।' : 'Give 5 key business advisory points based on our current sales, collection, and dues.'),
           businessData,
