@@ -10,7 +10,6 @@ import {
   EyeOff, 
   ArrowRight, 
   CheckCircle2, 
-  Sparkles, 
   Tv, 
   Armchair, 
   FileSpreadsheet, 
@@ -19,7 +18,6 @@ import {
   Languages, 
   Store, 
   AlertCircle,
-  HelpCircle,
 } from 'lucide-react';
 import { translations, Language } from '@/lib/i18n';
 import { UserSession } from '@/lib/session-service';
@@ -47,7 +45,6 @@ export function AnimatedLogin({
   const [mobile, setMobile] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -483,23 +480,7 @@ export function AnimatedLogin({
                   </div>
                 </div>
 
-                {/* Remember Me */}
-                <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
-                    />
-                    <span className="text-xs text-slate-600 dark:text-slate-400">
-                      {t.rememberMe}
-                    </span>
-                  </label>
-                  <span className="text-[11px] text-slate-400 font-mono">Secure sign-in</span>
-                </div>
-
-                {/* Animated Submit Button */}
+                  {/* Animated Submit Button */}
                 <motion.button
                   whileHover={!isLoading && !isSuccess ? { scale: 1.01 } : {}}
                   whileTap={!isLoading && !isSuccess ? { scale: 0.99 } : {}}
