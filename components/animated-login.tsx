@@ -20,12 +20,10 @@ import {
   Store, 
   AlertCircle,
   HelpCircle,
-  X,
-  UserCheck
 } from 'lucide-react';
 import { translations, Language } from '@/lib/i18n';
 import { UserSession } from '@/lib/session-service';
-import { saveUserAccountToSupabase } from '@/lib/supabase-service';
+import { supabase } from '@/lib/supabase';
 
 export type { UserSession };
 
@@ -46,146 +44,60 @@ export function AnimatedLogin({
 }: AnimatedLoginProps) {
   const t = translations[language];
 
-  const [mobile, setMobile] = useState('01812-345678');
-  const [pin, setPin] = useState('1234');
+  const [mobile, setMobile] = useState('');
+  const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [shakeKey, setShakeKey] = useState(0);
-  const [showForgotModal, setShowForgotModal] = useState(false);
 
-  // Demo user profiles for fast 1-click test
-  const demoUsers: (UserSession & { label: string; pin: string })[] = [
-    {
-      name: 'Md. Rahim Mia',
-      role: language === 'bn' ? 'স্বত্বাধিকারী (অ্যাডমিন)' : 'Proprietor (Admin)',
-      roleKey: 'admin',
-      isAdmin: true,
-      phone: '01812-345678',
-      avatarBg: 'bg-gradient-to-tr from-blue-600 to-indigo-600',
-      label: language === 'bn' ? 'অ্যাডমিন' : 'Admin',
-      pin: '1234',
-    },
-    {
-      name: 'Shakil Ahmed',
-      role: language === 'bn' ? 'সেলস ম্যানেজার' : 'Sales Manager',
-      roleKey: 'manager',
-      isAdmin: false,
-      phone: '01712-987654',
-      avatarBg: 'bg-gradient-to-tr from-emerald-600 to-teal-600',
-      label: language === 'bn' ? 'ম্যানেজার' : 'Manager',
-      pin: '1234',
-    },
-    {
-      name: 'Tahmid Hasan',
-      role: language === 'bn' ? 'ক্যাশিয়ার ও হিসাবরক্ষক' : 'Cashier & Accounts',
-      roleKey: 'cashier',
-      isAdmin: false,
-      phone: '01911-223344',
-      avatarBg: 'bg-gradient-to-tr from-amber-600 to-orange-600',
-      label: language === 'bn' ? 'ক্যাশিয়ার' : 'Cashier',
-      pin: '1234',
-    },
-  ];
-
-  const handleSelectDemoUser = (user: typeof demoUsers[0], autoSubmit = false) => {
-    setMobile(user.phone);
-    setPin(user.pin);
-    setErrorMessage('');
-
-    if (autoSubmit) {
-      triggerLogin(user);
-    }
-  };
-
-  const triggerLogin = (userToLogin?: UserSession) => {
+  const triggerLogin = async () => {
     setIsLoading(true);
     setErrorMessage('');
-
-    setTimeout(() => {
-      // Validate
-      const cleanPin = pin.trim();
-
-      // Demo validation accepts '1234' or any 4+ digit PIN
-      if (cleanPin === '1234' || cleanPin.length >= 4) {
-        setIsLoading(false);
-        setIsSuccess(true);
-
-        const isManager = mobile.includes('987');
-        const isCashier = mobile.includes('223');
-        const roleKey: 'admin' | 'manager' | 'cashier' = isManager ? 'manager' : isCashier ? 'cashier' : 'admin';
-        const isAdmin = roleKey === 'admin';
-
-        const chosenUser: UserSession = userToLogin || {
-          name: isManager ? 'Shakil Ahmed' : isCashier ? 'Tahmid Hasan' : 'Md. Rahim Mia',
-          role: isManager ? (language === 'bn' ? 'সেলস ম্যানেজার' : 'Sales Manager') :
-                isCashier ? (language === 'bn' ? 'ক্যাশিয়ার' : 'Cashier') :
-                (language === 'bn' ? 'স্বত্বাধিকারী (অ্যাডমিন)' : 'Proprietor (Admin)'),
-          roleKey,
-          isAdmin,
-          phone: mobile,
-          avatarBg: isManager ? 'bg-gradient-to-tr from-emerald-600 to-teal-600' :
-                    isCashier ? 'bg-gradient-to-tr from-amber-600 to-orange-600' :
-                    'bg-gradient-to-tr from-blue-600 to-indigo-600',
-        };
-
-        if (rememberMe && typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('kistiboi_auth', JSON.stringify({
-              isAuthenticated: true,
-              user: chosenUser,
-              timestamp: Date.now(),
-            }));
-          } catch {}
-        }
-
-        // Persist account login/registration to Supabase database
-        saveUserAccountToSupabase({
-          name: chosenUser.name,
-          email: `${chosenUser.phone.replace(/[^0-9]/g, '')}@kistiboi.com`,
-          phone: chosenUser.phone,
-          shop_name: 'KistiBoi Store',
-          role: chosenUser.role
-        });
-
-        setTimeout(() => {
-          onLoginSuccess(chosenUser);
-        }, 900);
-      } else {
-        setIsLoading(false);
-        setErrorMessage(
-          language === 'bn'
-            ? 'ভুল পিন কোড! ডেমো পিন: 1234 ব্যবহার করুন।'
-            : 'Invalid PIN code! Please use demo PIN: 1234.'
-        );
-        setShakeKey(prev => prev + 1);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: mobile.trim().toLowerCase(),
+        password: pin,
+      });
+      if (error || !data.user) throw new Error('Invalid email or password.');
+      const { data: staff, error: staffError } = await supabase
+        .from('user_accounts')
+        .select('id,name,phone,role,role_key,is_active')
+        .eq('auth_user_id', data.user.id)
+        .maybeSingle();
+      if (staffError || !staff || !staff.is_active || !['admin', 'manager', 'cashier'].includes(staff.role_key)) {
+        await supabase.auth.signOut();
+        throw new Error('This account is not authorised. Contact your administrator.');
       }
-    }, 800);
+      const roleKey = staff.role_key as UserSession['roleKey'];
+      const chosenUser: UserSession = {
+        id: data.user.id, name: staff.name, role: staff.role || roleKey, roleKey,
+        isAdmin: roleKey === 'admin', phone: staff.phone || '',
+        avatarBg: roleKey === 'admin' ? 'bg-gradient-to-tr from-blue-600 to-indigo-600' :
+          roleKey === 'manager' ? 'bg-gradient-to-tr from-emerald-600 to-teal-600' :
+          'bg-gradient-to-tr from-amber-600 to-orange-600',
+        email: data.user.email,
+      };
+      setIsSuccess(true);
+      onLoginSuccess(chosenUser);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.');
+      setShakeKey((value) => value + 1);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobile.trim()) {
-      setErrorMessage(
-        language === 'bn'
-          ? 'অনুগ্রহ করে মোবাইল নম্বর প্রবেশ করুন'
-          : 'Please enter your mobile number'
-      );
-      setShakeKey(prev => prev + 1);
+    if (!mobile.trim() || !pin) {
+      setErrorMessage(language === 'bn' ? 'ইমেইল ও পাসওয়ার্ড দিন।' : 'Enter your email and password.');
+      setShakeKey((value) => value + 1);
       return;
     }
-    if (!pin.trim()) {
-      setErrorMessage(
-        language === 'bn'
-          ? 'অনুগ্রহ করে সিকিউরিটি পিন দিন'
-          : 'Please enter your security PIN'
-      );
-      setShakeKey(prev => prev + 1);
-      return;
-    }
-    triggerLogin();
+    void triggerLogin();
   };
 
   return (
@@ -506,17 +418,17 @@ export function AnimatedLogin({
                 {/* Mobile / Username Field */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    {t.mobileOrUser}
+                    {language === 'bn' ? 'ইমেইল' : 'Email'}
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <Phone className="w-4 h-4" />
                     </div>
                     <input
-                      type="text"
+                      type="email"
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
-                      placeholder="01812-345678"
+                      placeholder="you@example.com"
                       required
                       disabled={isLoading || isSuccess}
                       className={`w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border font-mono transition-all focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 ${
@@ -532,14 +444,14 @@ export function AnimatedLogin({
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {t.securityPin}
+                      {language === 'bn' ? 'পাসওয়ার্ড' : 'Password'}
                     </label>
                     <button
                       type="button"
-                      onClick={() => setShowForgotModal(true)}
+                      onClick={() => setErrorMessage(language === 'bn' ? 'পাসওয়ার্ড রিসেটের জন্য অ্যাডমিনের সাথে যোগাযোগ করুন।' : 'Contact your administrator to reset your password.')}
                       className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
                     >
-                      {t.forgotPin}
+                      {language === 'bn' ? 'পাসওয়ার্ড ভুলে গেছেন?' : 'Forgot password?'}
                     </button>
                   </div>
                   <div className="relative">
@@ -550,8 +462,8 @@ export function AnimatedLogin({
                       type={showPin ? 'text' : 'password'}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
-                      placeholder="••••"
-                      maxLength={8}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
                       required
                       disabled={isLoading || isSuccess}
                       className={`w-full pl-10 pr-10 py-2.5 text-sm rounded-xl border tracking-widest font-mono transition-all focus:outline-hidden focus:ring-2 focus:ring-blue-500/50 ${
@@ -584,7 +496,7 @@ export function AnimatedLogin({
                       {t.rememberMe}
                     </span>
                   </label>
-                  <span className="text-[11px] text-slate-400 font-mono">PIN: 1234</span>
+                  <span className="text-[11px] text-slate-400 font-mono">Secure sign-in</span>
                 </div>
 
                 {/* Animated Submit Button */}
@@ -614,124 +526,11 @@ export function AnimatedLogin({
                 </motion.button>
               </form>
 
-              {/* Fast 1-Click Role Switcher / Demo Login */}
-              <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                    {t.quickDemo}
-                  </span>
-                  <span className="text-[10px] text-slate-400">
-                    {language === 'bn' ? '১-ক্লিক লগইন' : 'Instant access'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {demoUsers.map((user) => (
-                    <motion.button
-                      key={user.name}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      type="button"
-                      onClick={() => handleSelectDemoUser(user, true)}
-                      className={`p-2 rounded-xl border text-left flex flex-col justify-between transition-colors ${
-                        mobile === user.phone
-                          ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <div className={`w-5 h-5 rounded-full ${user.avatarBg} text-white text-[10px] font-bold flex items-center justify-center shrink-0`}>
-                          {user.name.charAt(0)}
-                        </div>
-                        <span className="text-[11px] font-bold truncate">
-                          {user.label}
-                        </span>
-                      </div>
-                      <span className="text-[9px] text-slate-500 dark:text-slate-400 truncate">
-                        {user.name.split(' ')[0]}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
             </motion.div>
           </div>
 
         </div>
       </main>
-
-      {/* Forgot PIN Modal */}
-      <AnimatePresence>
-        {showForgotModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              className={`w-full max-w-sm rounded-2xl p-6 border shadow-2xl ${
-                darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/60 dark:text-blue-300">
-                    <HelpCircle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm">
-                      {language === 'bn' ? 'পিন পুনরুদ্ধার ও সহায়তা' : 'PIN Recovery & Assistance'}
-                    </h3>
-                    <p className="text-[11px] text-slate-500">
-                      {language === 'bn' ? 'সিস্টেম সাপোর্ট' : 'Store Admin Support'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
-                <p>
-                  {language === 'bn' 
-                    ? 'আপনার শপ অ্যাকাউন্টের ডিফল্ট সিকিউরিটি পিন হলো: '
-                    : 'The default security PIN for this test installation is: '}
-                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded">
-                    1234
-                  </span>
-                </p>
-                <p>
-                  {language === 'bn'
-                    ? 'কোনো কারণে প্রবেশ করতে না পারলে স্বত্বাধিকারী মোঃ রহিম মিয়া বা শপ হেল্পলাইনে যোগাযোগ করুন:'
-                    : 'If you need help or cannot sign in, please contact proprietor Md. Rahim Mia:'}
-                </p>
-                <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 font-mono text-xs flex items-center justify-between">
-                  <span>০১৮১২-৩৪৫৬৭৮</span>
-                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                    {language === 'bn' ? 'সক্রিয়' : 'Online'}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPin('1234');
-                  setShowForgotModal(false);
-                }}
-                className="mt-5 w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors"
-              >
-                {language === 'bn' ? 'পিন 1234 সেট করুন ও বন্ধ করুন' : 'Apply PIN 1234 & Close'}
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Bottom Footer */}
       <footer className="relative z-10 w-full py-3.5 px-6 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
