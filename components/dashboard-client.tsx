@@ -22,6 +22,7 @@ import { AnimatedLogin, UserSession } from '@/components/animated-login';
 import { Plus, Bell, LogOut, Check, ShieldCheck } from 'lucide-react';
 import { translations, Language } from '@/lib/i18n';
 import { CustomerRecord } from '@/lib/customer-service';
+import { supabase } from '@/lib/supabase';
 
 const INITIAL_CUSTOMERS: CustomerRecord[] = [
   {
@@ -193,20 +194,40 @@ export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
 
   React.useEffect(() => {
-    // Asynchronously restore session after hydration completes
-    const timer = setTimeout(() => {
-      try {
-        const stored = localStorage.getItem('kistiboi_auth');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && parsed.isAuthenticated && parsed.user) {
-            setIsAuthenticated(true);
-            setCurrentUser(parsed.user);
-          }
-        }
-      } catch {}
-    }, 0);
-    return () => clearTimeout(timer);
+    let mounted = true;
+    const restoreSession = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user || !mounted) {
+        if (mounted) { setCurrentUser(null); setIsAuthenticated(false); }
+        return;
+      }
+      const { data: staff, error: staffError } = await supabase
+        .from('user_accounts')
+        .select('name,phone,role,role_key,is_active')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      if (!mounted) return;
+      if (staffError || !staff || !staff.is_active || !['admin', 'manager', 'cashier'].includes(staff.role_key)) {
+        await supabase.auth.signOut();
+        setCurrentUser(null); setIsAuthenticated(false);
+        return;
+      }
+      const roleKey = staff.role_key as UserSession['roleKey'];
+      setCurrentUser({
+        id: user.id, name: staff.name, role: staff.role || roleKey, roleKey,
+        isAdmin: roleKey === 'admin', phone: staff.phone || '',
+        avatarBg: roleKey === 'admin' ? 'bg-gradient-to-tr from-blue-600 to-indigo-600' :
+          roleKey === 'manager' ? 'bg-gradient-to-tr from-emerald-600 to-teal-600' :
+          'bg-gradient-to-tr from-amber-600 to-orange-600',
+        email: user.email,
+      });
+      setIsAuthenticated(true);
+    };
+    void restoreSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) { setCurrentUser(null); setIsAuthenticated(false); }
+    });
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
   const [settingsSavedToast, setSettingsSavedToast] = useState<boolean>(false);
@@ -216,12 +237,9 @@ export default function DashboardPage() {
     setIsAuthenticated(true);
   };
 
-  const handleSignOut = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('kistiboi_auth');
-      } catch {}
-    }
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
     setIsAuthenticated(false);
   };
 
